@@ -10,6 +10,8 @@ Once the addon is in your Windower addons folder, it won't show up in the Window
 
     lua load FastFollow
 
+To get pause-on-spellcasting working perfectly, you will also need an update for Windower's `res/spells.lua` for the Era cast times. Some spells had their cast times reduced in retail.
+
 ## Commands
 
 You can use `//fastfollow` or `//ffo`.
