@@ -3,7 +3,7 @@ FFXI Windower addon that allows multiboxers to follow more easily and keep their
 Note that this is NOT the same as `/follow`. You must use `//ffo <name>` or `//ffo me` to start following.
 
 ## Installation
-After downloading, extract to your Windower addons folder. Make sure the folder is called FastFollow, rather than -master or -v1.whatever. Your file structure should look like this:
+After downloading, extract to your Windower addons folder. Make sure the folder is called FastFollow, rather than FastFollow-master or FastFollow-v1.whatever. Your file structure should look like this:
 
     addons/FastFollow/FastFollow.lua
 
