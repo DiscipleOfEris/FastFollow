@@ -1,7 +1,9 @@
 _addon.name = 'FastFollow'
 _addon.author = 'DiscipleOfEris'
-_addon.version = '1.0.0'
+_addon.version = '1.0.1'
 _addon.commands = {'fastfollow', 'ffo'}
+
+-- TODO: pause on ranged attacks.
 
 require('strings')
 require('tables')
@@ -9,7 +11,7 @@ require('sets')
 require('coroutine')
 packets = require('packets')
 res = require('resources')
-spells = res.spells
+spells = require('spell_cast_times')
 items = res.items
 
 follow_me = 0
@@ -18,11 +20,13 @@ target = nil
 last_target = nil
 min_dist = 0.20^2
 max_dist = 50.0^2
+spell_dist = 20.4^2
 repeated = false
 last_self = nil
 zone_walk_duration = 0.2
 zone_walk_end = 0
 zoned = false
+running = false
 casting = nil
 pause_delay = 0.1
 pause_dismount_delay = 0.5
@@ -50,10 +54,12 @@ windower.register_event('addon command', function(command, ...)
   elseif command == 'stop' then
     follow_me = 0
     following = false
+    windower.send_ipc_message('stopped '..self.name)
   elseif command == 'stopall' then
     follow_me = 0
     following = false
     windower.send_ipc_message('stop')
+    windower.send_ipc_message('stopped '..self.name)
   elseif command == 'follow' then
     if #args == 0 then
       return windower.add_to_chat(0, 'FastFollow: You must provide a player name to follow.')
@@ -61,6 +67,7 @@ windower.register_event('addon command', function(command, ...)
     casting = nil
     following = args[1]:lower()
     windower.send_ipc_message('following '..following)
+    windower.ffxi.follow()
   elseif command == 'pauseon' then
     if #args == 0 then
       return windower.add_to_chat(0, 'FastFollow: To change pausing behavior, provide spell|item|any to pauseon.')
@@ -96,6 +103,11 @@ windower.register_event('ipc message', function(msgStr)
   if args[1] == 'stop' then
     follow_me = 0
     following = false
+    windower.send_ipc_message('stopped '..self.name)
+  elseif args[1] == 'stopped' then
+    if following == args[2] then
+      following = false
+    end
   elseif args[1] == 'follow' then
     if following then windower.send_ipc_message('stopfollowing '..following) end
     following = args[2]
@@ -103,6 +115,7 @@ windower.register_event('ipc message', function(msgStr)
     target_pos = nil
     last_target_pos = nil
     windower.send_ipc_message('following '..following)
+    windower.ffxi.follow()
   elseif args[1] == 'following' then
     self = windower.ffxi.get_player()
     if not self or self.name:lower() ~= args[2] then return end
@@ -110,11 +123,9 @@ windower.register_event('ipc message', function(msgStr)
   elseif args[1] == 'stopfollowing' then
     self = windower.ffxi.get_player()
     if not self or self.name:lower() ~= args[2] then return end
-    follow_me = follow_me - 1
+    follow_me = math.max(follow_me - 1, 0)
   elseif args[1] == 'update' then
     if not following or args[2] ~= following then return end
-    
-    --windower.add_to_chat(0, msgStr)
     
     zoned = false
     target = {x=tonumber(args[4]), y=tonumber(args[5]), zone=tonumber(args[3])}
@@ -143,18 +154,22 @@ windower.register_event('prerender', function()
     if not self or not info then return end
     
     args = T{'update', self.name , info.zone, self.x, self.y}
-    --windower.add_to_chat(0, args:concat(' '))
     windower.send_ipc_message(args:concat(' '))
   elseif following then
     local self = windower.ffxi.get_mob_by_target('me')
     local info = windower.ffxi.get_info()
     
     if not self or not info then return end
-    if casting then return windower.ffxi.run(false) end
-    if not target then return windower.ffxi.run(false) end
-    --if last_target and target.x == last_target.x and target.y == last_target.y then
-    --  return windower.ffxi.run(false)
-    --end
+    if casting then
+      windower.ffxi.run(false)
+      running = false
+      return
+    end
+    if not target and running then
+      windower.ffxi.run(false)
+      running = false
+      return
+    end
     
     if os.time() < zone_walk_end then return end
     if not zoned and target.zone == -1 and info.zone == last_target.zone then
@@ -163,6 +178,7 @@ windower.register_event('prerender', function()
       distSq = distanceSquared(last_target, self)
       len = math.sqrt(distSq)
       windower.ffxi.run(last_target.x - self.x, last_target.y - self.y)
+      running = true
       return
     end
     
@@ -172,8 +188,13 @@ windower.register_event('prerender', function()
     
     if target.zone == info.zone and distSq > min_dist and distSq < max_dist then
       windower.ffxi.run((target.x - self.x)/len, (target.y - self.y)/len)
-    else
+      running = true
+    elseif target.zone == info.zone and distSq <= min_dist then
       windower.ffxi.run(false)
+      running = true
+    elseif running then
+      windower.ffxi.run(false)
+      running = false
     end
   end
 end)
@@ -206,7 +227,7 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
     if packet.Category == PACKET_ACTION_CATEGORY.MAGIC_CAST then
       -- TODO: Maybe get a little smarter, such as checking if the target is within range, we have sufficient mp, etc.
       local spell = spells[packet.Param]
-      delay = spell.cast_time + 5.0
+      delay = spell.cast_time + 0.5
     end
     
     if co then coroutine.close(co) end
