@@ -1,6 +1,6 @@
 _addon.name = 'FastFollow'
 _addon.author = 'DiscipleOfEris'
-_addon.version = '1.0.1'
+_addon.version = '1.0.2'
 _addon.commands = {'fastfollow', 'ffo'}
 
 -- TODO: pause on ranged attacks.
@@ -23,7 +23,7 @@ max_dist = 50.0^2
 spell_dist = 20.4^2
 repeated = false
 last_self = nil
-zone_walk_duration = 0.2
+zone_walk_duration = 0.1
 zone_walk_end = 0
 zoned = false
 running = false
@@ -34,7 +34,7 @@ pauseon = S{'spell','item','dismount'}
 co = nil
 
 windower.register_event('addon command', function(command, ...)
-  command = command:lower()
+  command = command and command:lower() or nil
   args = T{...}
   
   if not command then
@@ -52,14 +52,11 @@ windower.register_event('addon command', function(command, ...)
     repeated = false
     windower.send_ipc_message('follow '..self.name)
   elseif command == 'stop' then
-    follow_me = 0
     following = false
-    windower.send_ipc_message('stopped '..self.name)
   elseif command == 'stopall' then
     follow_me = 0
     following = false
     windower.send_ipc_message('stop')
-    windower.send_ipc_message('stopped '..self.name)
   elseif command == 'follow' then
     if #args == 0 then
       return windower.add_to_chat(0, 'FastFollow: You must provide a player name to follow.')
@@ -103,11 +100,6 @@ windower.register_event('ipc message', function(msgStr)
   if args[1] == 'stop' then
     follow_me = 0
     following = false
-    windower.send_ipc_message('stopped '..self.name)
-  elseif args[1] == 'stopped' then
-    if following == args[2] then
-      following = false
-    end
   elseif args[1] == 'follow' then
     if following then windower.send_ipc_message('stopfollowing '..following) end
     following = args[2]
