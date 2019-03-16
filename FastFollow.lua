@@ -1,6 +1,6 @@
 _addon.name = 'FastFollow'
 _addon.author = 'DiscipleOfEris'
-_addon.version = '1.0.2'
+_addon.version = '1.0.3'
 _addon.commands = {'fastfollow', 'ffo'}
 
 -- TODO: pause on ranged attacks.
@@ -13,17 +13,44 @@ packets = require('packets')
 res = require('resources')
 spells = require('spell_cast_times')
 items = res.items
+config = require('config')
+texts = require('texts')
+require('logger')
+
+defaults = {}
+defaults.show = false
+defaults.min = 0.5
+defaults.zone_poke = 0.2
+defaults.display = {}
+defaults.display.pos = {}
+defaults.display.pos.x = 0
+defaults.display.pos.y = 0
+defaults.display.bg = {}
+defaults.display.bg.red = 0
+defaults.display.bg.green = 0
+defaults.display.bg.blue = 0
+defaults.display.bg.alpha = 102
+defaults.display.text = {}
+defaults.display.text.font = 'Consolas'
+defaults.display.text.red = 255
+defaults.display.text.green = 255
+defaults.display.text.blue = 255
+defaults.display.text.alpha = 255
+defaults.display.text.size = 10
+
+settings = config.load(defaults)
+box = texts.new("", settings.display, settings)
 
 follow_me = 0
 following = false
 target = nil
 last_target = nil
-min_dist = 0.20^2
+min_dist = settings.min^2
 max_dist = 50.0^2
 spell_dist = 20.4^2
 repeated = false
 last_self = nil
-zone_walk_duration = 0.1
+zone_walk_duration = settings.zone_poke
 zone_walk_end = 0
 zoned = false
 running = false
@@ -33,14 +60,16 @@ pause_dismount_delay = 0.5
 pauseon = S{'spell','item','dismount'}
 co = nil
 
+track_info = T{}
+
 windower.register_event('addon command', function(command, ...)
   command = command and command:lower() or nil
   args = T{...}
   
   if not command then
-    windower.add_to_chat(0, 'FastFollow: Provide a name to follow, or "me" to make others follow you.')
-    windower.add_to_chat(0, 'FastFollow: Stop following with "stop" on a single character, or "stopall" on all characters.')
-    windower.add_to_chat(0, 'FastFollow: Can configure auto-pausing with pauseon|pausedelay commands.')
+    log('Provide a name to follow, or "me" to make others follow you.')
+    log('Stop following with "stop" on a single character, or "stopall" on all characters.')
+    log('Can configure auto-pausing with pauseon|pausedelay commands.')
   elseif command == 'followme' or command == 'me' then
     self = windower.ffxi.get_mob_by_target('me')
     if not self and not repeated then
@@ -51,6 +80,7 @@ windower.register_event('addon command', function(command, ...)
     
     repeated = false
     windower.send_ipc_message('follow '..self.name)
+    windower.send_ipc_message('track '..(settings.show and 'on' or 'off'))
   elseif command == 'stop' then
     following = false
   elseif command == 'stopall' then
@@ -89,6 +119,36 @@ windower.register_event('addon command', function(command, ...)
   elseif command == 'pausedelay' then
     pause_delay = tonumber(args[1])
     windower.add_to_chat(0, 'FastFollow: Setting item/spell pause delay to '..tostring(pause_delay)..' seconds.')
+  elseif command == 'info' then
+    if not args[1] then
+      settings.show = not settings.show
+    elseif args[1] == 'on' then
+      settings.show = true
+    elseif args[2] == 'off' then
+      settings.show = false
+    end
+    
+    windower.send_ipc_message('track '..(settings.show and 'on' or 'off'))
+    
+    config.save(settings)
+  elseif command == 'min' then
+    local dist = tonumber(args[1])
+    if not dist then return end
+    
+    dist = math.min(math.max(0.2, dist), 10)
+    
+    settings.min = dist
+    min_dist = settings.min^2
+    config.save(settings)
+  elseif command == 'zone' then
+    local dur = tonumber(args[1])
+    if not dur then return end
+    
+    dur = math.min(math.max(0, dur), 10)
+    
+    settings.zone_poke = dur
+    zone_walk_duration = dur
+    config.save(settings)
   elseif command then
     windower.send_command('ffo follow '..command)
   end
@@ -100,6 +160,7 @@ windower.register_event('ipc message', function(msgStr)
   if args[1] == 'stop' then
     follow_me = 0
     following = false
+    tracking = false
   elseif args[1] == 'follow' then
     if following then windower.send_ipc_message('stopfollowing '..following) end
     following = args[2]
@@ -117,20 +178,27 @@ windower.register_event('ipc message', function(msgStr)
     if not self or self.name:lower() ~= args[2] then return end
     follow_me = math.max(follow_me - 1, 0)
   elseif args[1] == 'update' then
+    local pos = {x=tonumber(args[4]), y=tonumber(args[5])}
+    track_info[args[2]] = pos
+    
     if not following or args[2] ~= following then return end
     
     zoned = false
-    target = {x=tonumber(args[4]), y=tonumber(args[5]), zone=tonumber(args[3])}
+    target = {x=pos.x, y=pos.y, zone=tonumber(args[3])}
     
     if not last_target then last_target = target end
     
      if target.zone ~= -1 and (target.x ~= last_target.x or target.y ~= last_target.y or target.zone ~= last_target.zone) then
       last_target = target
     end
+  elseif args[1] == 'track' then
+    tracking = args[2] == 'on' and true or false
   end
 end)
 
 windower.register_event('prerender', function()
+  updateInfo()
+  
   if not follow_me and not following then return end
   
   if follow_me > 0 then
@@ -152,6 +220,12 @@ windower.register_event('prerender', function()
     local info = windower.ffxi.get_info()
     
     if not self or not info then return end
+    
+    if tracking then
+      if target and tracking then windower.send_ipc_message('update '..following..' '..target.zone..' '..target.x..' '..target.y) end
+      windower.send_ipc_message('update '..self.name..' '..info.zone..' '..self.x..' '..self.y)
+    end
+    
     if casting then
       windower.ffxi.run(false)
       running = false
@@ -267,6 +341,29 @@ windower.register_event('action', function(action)
     casting = false
   end
 end)
+
+function updateInfo()
+  box:visible(settings.show)
+  
+  if not settings.show then return end
+  
+  local self = windower.ffxi.get_mob_by_target('me')
+  
+  if not self then
+    box:visible(false)
+    return
+  end
+  
+  lines = T{string.format('me 0.00')} -- 'me 0.00 (%.3f %.3f)', self.x, self.y)}
+  for char,pos in pairs(track_info) do
+    local dist = math.sqrt(distanceSquared(self, pos))
+    lines:insert(string.format('%s %.2f', char, dist)) -- '%s %.2f (%.3f %.3f)', char, dist, pos.x, pos.y))
+  end
+  
+  local maxWidth = math.max(1, table.reduce(lines, function(a, b) return math.max(a, #b) end, '1'))
+  for i,line in ipairs(lines) do lines[i] = lines[i]:lpad(' ', maxWidth) end
+  box:text(lines:concat('\n'))
+end
 
 function distanceSquared(A, B)
   local dx = B.x-A.x
