@@ -1,6 +1,6 @@
 _addon.name = 'FastFollow'
 _addon.author = 'DiscipleOfEris'
-_addon.version = '1.2.0'
+_addon.version = '1.2.1'
 _addon.commands = {'fastfollow', 'ffo'}
 
 -- TODO: pause on ranged attacks.
@@ -21,7 +21,6 @@ require('strings')
 defaults = {}
 defaults.show = false
 defaults.min = 0.5
-defaults.zone_poke = 0.2
 defaults.display = {}
 defaults.display.pos = {}
 defaults.display.pos.x = 0
@@ -51,8 +50,6 @@ max_dist = 50.0^2
 spell_dist = 20.4^2
 repeated = false
 last_self = nil
-zone_walk_duration = settings.zone_poke
-zone_walk_end = 0
 last_zone = os.clock()
 zone_suppress = 3
 zone_min_dist = 5.0^2
@@ -154,15 +151,6 @@ windower.register_event('addon command', function(command, ...)
     settings.min = dist
     min_dist = settings.min^2
     config.save(settings)
-  elseif command == 'zone' then
-    local dur = tonumber(args[1])
-    if not dur then return end
-    
-    dur = math.min(math.max(0, dur), 10)
-    
-    settings.zone_poke = dur
-    zone_walk_duration = dur
-    config.save(settings)
   elseif command then
     windower.send_command('ffo follow '..command)
   end
@@ -176,6 +164,7 @@ windower.register_event('ipc message', function(msgStr)
     follow_me = 0
     following = false
     tracking = false
+    windower.ffxi.run(false)
   elseif command == 'follow' then
     if following then windower.send_ipc_message('stopfollowing '..following) end
     following = args[1]
@@ -212,7 +201,7 @@ windower.register_event('ipc message', function(msgStr)
     local zone_line = tonumber(args[2])
     local zone_type = tonumber(args[3])
     
-    if zone_line and zone_type then zone(zone_line, zone_type) end
+    if zone_line and zone_type then zone(zone_line, zone_type, target.zone, target.x, target.y) end
   elseif command == 'track' then
     tracking = args[1] == 'on' and true or false
   end
@@ -284,13 +273,13 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
       local self = windower.ffxi.get_mob_by_target('me')
       
       windower.send_ipc_message('zone %s %d %d':format(self.name, packet['Zone Line'], packet['Type']))
-    elseif following and (os.clock() - last_zone) < zone_suppress then
+    end
+    
+    if following and (os.clock() - last_zone) < zone_suppress then
       return true
     else
       last_zone = os.clock()
     end
-  elseif id == PACKET_OUT.REQUEST_ZONE and following and (os.clock() - last_zone) < zone_suppress then
-    return true
   elseif id == PACKET_OUT.ACTION and not casting then
     if not pauseon:contains('spell') and not pauseon:contains('dismount') then return end
     
@@ -365,30 +354,33 @@ windower.register_event('action', function(action)
   end
 end)
 
-function zone(zone_line, zone_type)
+function zone(zone_line, zone_type, zone, x, y)
   coroutine.sleep(0.2 + math.random()*2.5)
   local self = windower.ffxi.get_mob_by_target('me')
   local info = windower.ffxi.get_info()
   
-  if not self or not info or not target or info.zone ~= target.zone then return end
+  if not self or not info or info.zone ~= zone then return end
   
   local packet = packets.new('outgoing', PACKET_OUT.REQUEST_ZONE, {
     ['Zone Line'] = zone_line,
     ['Type'] = zone_type
   })
   
-  local distSq = distanceSquared(self, target)
+  local pos = {x=x, y=y}
+  local distSq = distanceSquared(self, pos)
   local i = 0
-  while distSq > zone_min_dist and i < 3 do
-    coroutine.sleep(1)
+  while distSq > zone_min_dist and i < 12 do
+    coroutine.sleep(0.25)
     self = windower.ffxi.get_mob_by_target('me')
-    if not self or not target then return end
-    distSq = distanceSquared(self, target)
+    if not self then return end
+    distSq = distanceSquared(self, pos)
     i = i + 1
   end
   
-  packets.inject(packet)
-  last_zone = os.clock()
+  if distSq <= zone_min_dist then
+    packets.inject(packet)
+    last_zone = os.clock()
+  end
 end
 
 function updateInfo()
