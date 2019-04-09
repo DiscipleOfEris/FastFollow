@@ -23,5 +23,4 @@ You can use `//fastfollow` or `//ffo`.
     //ffo pauseon <spells|items|dismount> -- Use auto-pausing to temporarily stop following to cast spells, etc.  
     //ffo pausedelay <delay> -- Choose how long to wait for following to correctly stop before doing the action.  
     //ffo min <distance> -- Set how closely to follow, between 0.2 and 10 yalms.  
-    //ffo zone <duration> -- Set how long to attempt to follow into the next zone.  
     //ffo info [on|off] -- Display a box containing client-to-client distances, to detect when an alt gets orphaned.  
