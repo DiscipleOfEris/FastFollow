@@ -59,7 +59,7 @@ casting = nil
 cast_time = 0
 pause_delay = 0.1
 pause_dismount_delay = 0.5
-pauseon = S{'spell','item','dismount'}
+pauseon = S{}
 co = nil
 tracking = false
 
