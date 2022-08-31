@@ -1,3 +1,5 @@
+# Development for this addon has been moved to https://github.com/DiscipleOfEris/Windower4Addons
+
 # FastFollow
 FFXI Windower addon that allows multiboxers to follow more easily and keep their characters more tightly grouped. ONLY WORKS WITH MULTIBOXERS.
 Note that this is NOT the same as `/follow`. You must use `//ffo <name>` or `//ffo me` to start following.
